@@ -1,6 +1,6 @@
 # https://contributors.home-assistant.io/apps/reference/configuration/
 name: FRP Server
-version: "0.72.0.3"
+version: "0.72.0.4"
 slug: frps
 description: Self-hosted ngrok alternative – the frp tunnel server (frps)
 url: "https://github.com/bjorngadde/fast-reverse-proxy-ha-app/tree/main/frps"
@@ -17,9 +17,14 @@ ingress: true
 ingress_port: 7599
 panel_icon: mdi:tunnel-outline
 panel_title: FRP
+# Read-only access to the certificates (e.g. from the Let's Encrypt app).
+map:
+  - type: ssl
 options:
   bind_port: 7000
   force_tls: true
+  certfile: ""
+  keyfile: ""
   vhost_http_port: 7080
   subdomain_host: ""
   allow_ports: ""
@@ -33,6 +38,8 @@ schema:
   auth_token: password?
   bind_port: port
   force_tls: bool
+  certfile: str?
+  keyfile: str?
   vhost_http_port: port
   subdomain_host: str?
   allow_ports: "match(^$|^\\d+(-\\d+)?(\\s*,\\s*\\d+(-\\d+)?)*$)?"

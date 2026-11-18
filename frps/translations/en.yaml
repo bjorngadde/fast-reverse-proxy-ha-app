@@ -16,6 +16,16 @@ configuration:
     description: >-
       Only accept TLS-encrypted client connections. frpc uses TLS by default,
       so leave this on.
+  certfile:
+    name: Certificate file
+    description: >-
+      Certificate in /ssl that frps presents to frpc clients, e.g.
+      fullchain.pem. It must cover the server address clients use (e.g.
+      frp.example.com). Without it, frps uses a self-signed certificate and
+      clients can't verify they're talking to your server.
+  keyfile:
+    name: Private key file
+    description: Private key in /ssl for the certificate, e.g. privkey.pem.
   vhost_http_port:
     name: HTTP vhost port
     description: >-

@@ -148,6 +148,27 @@ frpc -c frpc.toml
 
 Proxy names must be unique across all connected clients.
 
+## Verifying the server (recommended)
+
+By default frps uses a self-signed certificate on `bind_port`, and frpc
+doesn't check the server's certificate unless told to. On a hostile network
+someone could then pose as your server and capture client tokens.
+
+1. Set `certfile` and `keyfile` to a certificate in `/ssl` that covers the
+   address clients connect to, e.g. the Let's Encrypt app's `fullchain.pem`
+   and `privkey.pem` with a `*.example.com` wildcard for `frp.example.com`.
+   The app restarts frps by itself when the certificate is renewed.
+2. Make every client verify it:
+
+   ```toml
+   transport.tls.useSystemCa = true
+   ```
+
+   On frpc versions without `useSystemCa`, point at the system CA bundle
+   instead, e.g. `transport.tls.trustedCaFile = "/etc/ssl/cert.pem"` on
+   macOS. The name checked is `serverAddr`, unless `transport.tls.serverName`
+   says otherwise.
+
 ## Users
 
 By default everyone shares `auth_token`. To give people their own token

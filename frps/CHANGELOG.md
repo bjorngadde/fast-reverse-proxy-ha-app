@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.72.0.4
+
+- New `certfile`/`keyfile` options: frps presents a real certificate from
+  `/ssl` to frpc, so clients can verify the server with
+  `transport.tls.useSystemCa = true`. Without them frps keeps its
+  self-signed certificate and logs a warning.
+- frps restarts by itself when that certificate is renewed.
+
 ## 0.72.0.3
 
 - `auth_token` is optional when users are configured. Without it there is no

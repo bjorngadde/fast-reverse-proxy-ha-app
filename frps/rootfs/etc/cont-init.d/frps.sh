@@ -53,6 +53,25 @@ fi
 printf '%s' "${auth_token}" > "${TOKEN_FILE}"
 chmod 600 "${TOKEN_FILE}"
 
+# Certificate frps presents to frpc, so clients can verify the server.
+tls_cert=""
+tls_key=""
+if bashio::config.has_value 'certfile' || bashio::config.has_value 'keyfile'; then
+    if ! bashio::config.has_value 'certfile' || ! bashio::config.has_value 'keyfile'; then
+        bashio::exit.nok "Set both certfile and keyfile, or neither."
+    fi
+    tls_cert="/ssl/$(bashio::config 'certfile')"
+    tls_key="/ssl/$(bashio::config 'keyfile')"
+    for f in "${tls_cert}" "${tls_key}"; do
+        [[ -f "${f}" ]] || bashio::exit.nok "Certificate file ${f} not found."
+    done
+    bashio::log.info "Using certificate ${tls_cert} for frpc connections."
+else
+    bashio::log.warning "No certfile set: frps uses a self-signed certificate, so frpc can't verify the server. See the docs."
+fi
+# Read by the certwatch service, which restarts frps when the cert renews.
+printf '%s' "${tls_cert}" > /tmp/frps-certfile
+
 dashboard_port="$(bashio::config 'dashboard_port')"
 if [[ "${dashboard_port}" -eq "${INGRESS_PORT}" || "${dashboard_port}" -eq "${USERS_PLUGIN_ADDR##*:}" ]]; then
     bashio::exit.nok "dashboard_port ${dashboard_port} is reserved by the app."
@@ -104,6 +123,10 @@ fi
     echo 'bindAddr = "0.0.0.0"'
     echo "bindPort = $(bashio::config 'bind_port')"
     echo "transport.tls.force = $(bashio::config 'force_tls')"
+    if [[ -n "${tls_cert}" ]]; then
+        echo "transport.tls.certFile = $(toml_string "${tls_cert}")"
+        echo "transport.tls.keyFile = $(toml_string "${tls_key}")"
+    fi
     echo 'detailedErrorsToClient = false'
     echo
     echo 'auth.method = "token"'
