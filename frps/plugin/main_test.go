@@ -92,6 +92,17 @@ func TestValidate(t *testing.T) {
 			t.Errorf("config %d should be invalid", i)
 		}
 	}
+	noAdmin := testConfig()
+	noAdmin.AdminToken = ""
+	if err := noAdmin.validate(); err != nil {
+		t.Errorf("config without admin token rejected: %v", err)
+	}
+	if r := noAdmin.handleLogin(loginJSON("", "")); !r.Reject {
+		t.Error("admin login must be rejected without an admin token")
+	}
+	if r := noAdmin.handleLogin(loginJSON("anna", "anna-token-0123456789")); r.Reject {
+		t.Error("users must still sign in without an admin token")
+	}
 	if err := testConfig().validate(); err != nil {
 		t.Errorf("valid config rejected: %v", err)
 	}

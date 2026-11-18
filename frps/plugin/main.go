@@ -8,7 +8,7 @@
 // `metadatas.token`:
 //
 //   - no `user`: the admin, whose token is the app's auth_token. The admin may
-//     create any proxy.
+//     create any proxy. Without an auth_token there is no admin login.
 //   - `user = "<name>"`: that user's own token. On NewProxy, users may only
 //     create plain HTTP proxies on their own subdomains.
 package main
@@ -55,7 +55,7 @@ func loadConfig(file string) (*Config, error) {
 }
 
 func (c *Config) validate() error {
-	if len(c.AdminToken) < 16 {
+	if c.AdminToken != "" && len(c.AdminToken) < 16 {
 		return errors.New("admin token must be at least 16 characters")
 	}
 	seen := map[string]bool{}
@@ -70,7 +70,7 @@ func (c *Config) validate() error {
 		if len(u.Token) < 16 {
 			return fmt.Errorf("user %q: token must be at least 16 characters", u.Name)
 		}
-		if u.Token == c.AdminToken {
+		if c.AdminToken != "" && u.Token == c.AdminToken {
 			return fmt.Errorf("user %q: token must differ from auth_token", u.Name)
 		}
 		for _, p := range u.Subdomains {
@@ -124,6 +124,10 @@ func (c *Config) handleLogin(raw json.RawMessage) Response {
 	name, addr := content.User, content.ClientAddress
 	want := c.AdminToken
 	who := "admin"
+	if name == "" && want == "" {
+		log.Printf("login rejected: admin login is disabled (no auth_token), from %s", addr)
+		return reject("authorization failed")
+	}
 	if name != "" {
 		u := c.user(name)
 		if u == nil {

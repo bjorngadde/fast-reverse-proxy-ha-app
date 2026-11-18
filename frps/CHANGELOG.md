@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.72.0.3
+
+- `auth_token` is optional when users are configured. Without it there is no
+  admin login and everyone signs in as a user. Without users it's still
+  required.
+
 ## 0.72.0.2
 
 - New `users` option: per-person tokens and allowed subdomains, enforced by

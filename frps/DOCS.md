@@ -164,7 +164,8 @@ users:
   create plain HTTP tunnels on those subdomains: no TCP/UDP ports, no
   `customDomains`, no load-balancing groups.
 - Without a user name you are the admin, with `auth_token` as your token and
-  no restrictions.
+  no restrictions. With users configured, `auth_token` is optional: leave it
+  empty to have no admin login at all and add yourself as a user instead.
 - To revoke someone, remove them and restart the app. Their client is
   disconnected and can't sign in again.
 - The FRP sidebar panel shows connected clients and traffic per user.

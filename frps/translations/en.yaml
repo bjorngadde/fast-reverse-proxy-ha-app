@@ -4,7 +4,9 @@ configuration:
     name: Auth token
     description: >-
       Shared secret that every frpc client must present. Use a long random
-      string (at least 16 characters).
+      string (at least 16 characters). With users configured it's optional:
+      it's then the admin's token, and leaving it empty disables the admin
+      login.
   bind_port:
     name: Bind port
     description: >-

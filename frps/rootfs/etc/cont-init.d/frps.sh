@@ -40,9 +40,14 @@ allow_ports_toml() {
     printf '[%s]' "${entries[*]}"
 }
 
-auth_token="$(bashio::config 'auth_token')"
-if [[ ${#auth_token} -lt 16 ]]; then
-    bashio::exit.nok "auth_token must be at least 16 characters long."
+# auth_token is required without users. With users it's optional: it's then
+# only the admin's token, and leaving it out disables the admin login.
+auth_token=""
+if bashio::config.has_value 'auth_token'; then
+    auth_token="$(bashio::config 'auth_token')"
+    if [[ ${#auth_token} -lt 16 ]]; then
+        bashio::exit.nok "auth_token must be at least 16 characters long."
+    fi
 fi
 # The token lives in its own file, so it never needs escaping in TOML.
 printf '%s' "${auth_token}" > "${TOKEN_FILE}"
@@ -72,6 +77,11 @@ if [[ "${user_count}" -gt 0 ]]; then
         || bashio::exit.nok "Invalid users configuration."
     bashio::log.info "Users: $(jq -r '[.users[].name] | join(", ")' "${USERS_CONFIG}")"
     bashio::log.info "Users mode: clients sign in with metadatas.token (auth.token must be empty)."
+    if [[ -z "${auth_token}" ]]; then
+        bashio::log.info "No auth_token set: admin login is disabled, everyone signs in as a user."
+    fi
+elif [[ -z "${auth_token}" ]]; then
+    bashio::exit.nok "Set auth_token (or add users) so clients can sign in."
 fi
 
 # The dashboard always runs, because the sidebar panel shows it. Without a

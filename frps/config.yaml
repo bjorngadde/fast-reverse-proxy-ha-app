@@ -1,6 +1,6 @@
 # https://contributors.home-assistant.io/apps/reference/configuration/
 name: FRP Server
-version: "0.72.0.2"
+version: "0.72.0.3"
 slug: frps
 description: Self-hosted ngrok alternative – the frp tunnel server (frps)
 url: "https://github.com/bjorngadde/fast-reverse-proxy-ha-app/tree/main/frps"
@@ -30,7 +30,7 @@ options:
   log_level: info
   users: []
 schema:
-  auth_token: password
+  auth_token: password?
   bind_port: port
   force_tls: bool
   vhost_http_port: port
