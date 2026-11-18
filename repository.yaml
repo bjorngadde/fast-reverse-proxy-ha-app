@@ -1,0 +1,4 @@
+# https://contributors.home-assistant.io/apps/guides/repository/
+name: FRP for Home Assistant
+url: "https://github.com/bjorngadde/fast-reverse-proxy-ha-app"
+maintainer: Björn Gadde
