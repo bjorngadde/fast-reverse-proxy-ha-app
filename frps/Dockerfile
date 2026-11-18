@@ -1,5 +1,13 @@
 # https://contributors.home-assistant.io/apps/guides/dockerfile/
 ARG BUILD_FROM=ghcr.io/home-assistant/base:3.24
+
+# frps-users: the server plugin behind the users option (see plugin/).
+FROM golang:1.24-alpine AS users-plugin
+WORKDIR /src
+COPY plugin/ ./
+RUN go test ./... \
+    && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /frps-users .
+
 FROM ${BUILD_FROM}
 
 # nginx is the ingress proxy for the sidebar panel.
@@ -23,6 +31,8 @@ RUN \
     && install -m 0755 "/tmp/${frp_name}/frps" /usr/bin/frps \
     && rm -rf /tmp/frp.tar.gz "/tmp/${frp_name}" \
     && frps --version
+
+COPY --from=users-plugin /frps-users /usr/bin/frps-users
 
 # Copy root filesystem
 COPY rootfs /

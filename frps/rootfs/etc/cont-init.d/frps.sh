@@ -7,6 +7,10 @@
 readonly FRPS_CONFIG=/tmp/frps.toml
 readonly TOKEN_FILE=/tmp/frps.token
 readonly NGINX_CONFIG=/tmp/nginx.conf
+readonly USERS_CONFIG=/tmp/frps-users.json
+readonly OPTIONS_FILE="${OPTIONS_FILE:-/data/options.json}"
+# Must match the frps-users default listen address.
+readonly USERS_PLUGIN_ADDR=127.0.0.1:7598
 # Must match ingress_port in config.yaml.
 readonly INGRESS_PORT=7599
 # Only the Supervisor's ingress proxy may talk to the ingress port.
@@ -45,8 +49,29 @@ printf '%s' "${auth_token}" > "${TOKEN_FILE}"
 chmod 600 "${TOKEN_FILE}"
 
 dashboard_port="$(bashio::config 'dashboard_port')"
-if [[ "${dashboard_port}" -eq "${INGRESS_PORT}" ]]; then
-    bashio::exit.nok "dashboard_port ${INGRESS_PORT} is reserved for the sidebar panel."
+if [[ "${dashboard_port}" -eq "${INGRESS_PORT}" || "${dashboard_port}" -eq "${USERS_PLUGIN_ADDR##*:}" ]]; then
+    bashio::exit.nok "dashboard_port ${dashboard_port} is reserved by the app."
+fi
+
+# Users: written as JSON for the frps-users plugin, which frps only calls when
+# at least one user is configured.
+jq --arg admin "${auth_token}" '{
+    admin_token: $admin,
+    users: [(.users // [])[] | {
+        name,
+        token,
+        subdomains: ((.subdomains // "") | split(",")
+            | map(gsub("^\\s+|\\s+$"; "") | ascii_downcase)
+            | map(select(length > 0)))
+    }]
+}' "${OPTIONS_FILE}" > "${USERS_CONFIG}"
+chmod 600 "${USERS_CONFIG}"
+user_count="$(jq '.users | length' "${USERS_CONFIG}")"
+if [[ "${user_count}" -gt 0 ]]; then
+    frps-users -check -config "${USERS_CONFIG}" \
+        || bashio::exit.nok "Invalid users configuration."
+    bashio::log.info "Users: $(jq -r '[.users[].name] | join(", ")' "${USERS_CONFIG}")"
+    bashio::log.info "Users mode: clients sign in with metadatas.token (auth.token must be empty)."
 fi
 
 # The dashboard always runs, because the sidebar panel shows it. Without a
@@ -72,8 +97,15 @@ fi
     echo 'detailedErrorsToClient = false'
     echo
     echo 'auth.method = "token"'
-    echo 'auth.tokenSource.type = "file"'
-    echo "auth.tokenSource.file.path = $(toml_string "${TOKEN_FILE}")"
+    if [[ "${user_count}" -gt 0 ]]; then
+        # frps derives the control-channel key from auth.token, so all
+        # clients must share it: keep it empty and let the users plugin check
+        # each client's metadatas.token instead. TLS still encrypts the link.
+        echo 'auth.token = ""'
+    else
+        echo 'auth.tokenSource.type = "file"'
+        echo "auth.tokenSource.file.path = $(toml_string "${TOKEN_FILE}")"
+    fi
     echo
     echo "vhostHTTPPort = $(bashio::config 'vhost_http_port')"
     if bashio::config.has_value 'subdomain_host'; then
@@ -96,6 +128,15 @@ fi
     echo 'log.to = "console"'
     echo "log.level = $(toml_string "$(bashio::config 'log_level')")"
     echo 'log.disablePrintColor = true'
+    # Tables must come last: keys after them would belong to the table.
+    if [[ "${user_count}" -gt 0 ]]; then
+        echo
+        echo '[[httpPlugins]]'
+        echo 'name = "users"'
+        echo "addr = $(toml_string "${USERS_PLUGIN_ADDR}")"
+        echo 'path = "/handler"'
+        echo 'ops = ["Login", "NewProxy"]'
+    fi
 } > "${FRPS_CONFIG}"
 chmod 600 "${FRPS_CONFIG}"
 

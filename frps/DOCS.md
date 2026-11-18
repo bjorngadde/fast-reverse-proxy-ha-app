@@ -40,6 +40,7 @@ internet ──► router :7000 ──► frps bind :7000 ──┘
 | `dashboard_password` | empty | Set it to also open the dashboard on the LAN. The sidebar panel works without it. |
 | `metrics_port` | `0` | Prometheus `/metrics` and `/healthz` listener. `0` turns it off. |
 | `log_level` | `info` | `trace`, `debug`, `info`, `warn` or `error`. |
+| `users` | empty | People with their own token and subdomains. See [Users](#users). |
 
 frpc connects to frps over TCP, so forwarding TCP `bind_port` is enough for
 HTTP tunnels. UDP is only needed for `type = "udp"` tunnels (forward their
@@ -146,6 +147,59 @@ frpc -c frpc.toml
 ```
 
 Proxy names must be unique across all connected clients.
+
+## Users
+
+By default everyone shares `auth_token`. To give people their own token
+instead, add them under `users`:
+
+```yaml
+users:
+  - name: anna
+    token: a-long-random-token-for-anna
+    subdomains: brite, anna-*
+```
+
+- `subdomains` is a comma-separated list; `*` is a wildcard. Users can only
+  create plain HTTP tunnels on those subdomains: no TCP/UDP ports, no
+  `customDomains`, no load-balancing groups.
+- Without a user name you are the admin, with `auth_token` as your token and
+  no restrictions.
+- To revoke someone, remove them and restart the app. Their client is
+  disconnected and can't sign in again.
+- The FRP sidebar panel shows connected clients and traffic per user.
+
+frp derives its connection encryption key from `auth.token`, so all clients
+have to share it. With users configured, the app therefore runs frps with an
+empty `auth.token` (the connection is still encrypted with TLS) and every
+client, you included, signs in with `metadatas.token` instead:
+
+```toml
+# a user
+serverAddr = "example.com"
+serverPort = 7000
+user = "anna"
+metadatas.token = "a-long-random-token-for-anna"
+
+[[proxies]]
+name = "brite-webhook"          # shown as anna.brite-webhook
+type = "http"
+localPort = 5000
+subdomain = "brite"
+```
+
+```toml
+# the admin: no user, auth_token as metadatas.token
+serverAddr = "example.com"
+serverPort = 7000
+metadatas.token = "your-auth-token"
+```
+
+Clients that still set `auth.token` are refused while users are configured.
+Removing all users switches back to plain `auth.token`.
+
+With `user` set, frp prefixes proxy names with the user name, so two people
+can both have a proxy called `webhook`. Subdomains still have to be unique.
 
 ## Inspecting and replaying requests
 

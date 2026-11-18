@@ -54,3 +54,12 @@ configuration:
   log_level:
     name: Log level
     description: How much frps should log.
+  users:
+    name: Users
+    description: >-
+      People who get their own token instead of auth_token. Each entry has a
+      name (a-z, 0-9, - and _), a token (16+ characters) and the subdomains
+      they may use, comma-separated, with * as wildcard (e.g. "brite,
+      anna-*"). Users can only create HTTP tunnels on those subdomains.
+      With users set, every client (you included) signs in with
+      metadatas.token instead of auth.token; see the docs.

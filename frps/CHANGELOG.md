@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.72.0.2
+
+- New `users` option: per-person tokens and allowed subdomains, enforced by
+  a small frps server plugin (`frps-users`) built into the image. Users can
+  only create HTTP tunnels on their own subdomains.
+- With users configured, all clients sign in with `metadatas.token`
+  instead of `auth.token` (see the Users section in the docs). Without users
+  nothing changes.
+
 ## 0.72.0.1
 
 - The frps dashboard is now a Home Assistant sidebar panel (**FRP**), served
