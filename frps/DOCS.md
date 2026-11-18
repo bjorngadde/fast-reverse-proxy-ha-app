@@ -32,6 +32,7 @@ internet ──► router :7000 ──► frps bind :7000 ──┘
 | `bind_port` | `7000` | Port `frpc` connects to. Forward this one in your router. |
 | `force_tls` | `true` | Reject clients that don't use TLS. `frpc` uses TLS by default. |
 | `vhost_http_port` | `7080` | Plain-HTTP port where frps routes tunnels by host name. Your reverse proxy points here. Don't forward it. |
+| `internal_only` | `false` | Serve tunnels only on Home Assistant's internal network. See [Keeping tunnels off your LAN](#keeping-tunnels-off-your-lan). |
 | `subdomain_host` | empty | Base domain for tunnels. With `example.com`, a client asking for subdomain `myapp` is served at `myapp.example.com`. |
 | `allow_ports` | empty | Ports clients may open for TCP/UDP tunnels, e.g. `6000-6100, 6200`. Empty means any port. |
 | `max_ports_per_client` | `0` | Limit on TCP/UDP ports per client. `0` means no limit. |
@@ -147,6 +148,25 @@ frpc -c frpc.toml
 ```
 
 Proxy names must be unique across all connected clients.
+
+## Keeping tunnels off your LAN
+
+The app uses the host network, so by default `vhost_http_port` (and any TCP
+tunnel port) is reachable from every device on your LAN over plain HTTP.
+Reverse proxy apps such as the NGINX app run on Home Assistant's internal
+Docker network instead, where the host has its own address (normally
+`172.30.32.1`).
+
+With `internal_only: true`, frps serves tunnels only on that internal
+address. The log shows it at startup:
+
+```text
+Tunnels only on the internal network: point your reverse proxy at http://172.30.32.1:7080
+```
+
+Use that address in your reverse proxy (e.g. `proxy_pass` in the NGINX
+server file) instead of the host's LAN IP. Clients still connect to
+`bind_port` as before. TCP tunnels become internal-only too.
 
 ## Verifying the server (recommended)
 

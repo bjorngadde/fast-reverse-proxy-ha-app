@@ -32,6 +32,13 @@ configuration:
       Port where frps serves HTTP tunnels by host name. Point your reverse
       proxy (e.g. Nginx Proxy Manager) at this port. Do not forward it in the
       router.
+  internal_only:
+    name: Internal network only
+    description: >-
+      Serve HTTP tunnels (and TCP tunnels) only on Home Assistant's internal
+      network, so devices on your LAN can't reach them over plain HTTP. Point
+      your reverse proxy app at the address shown in the log, e.g.
+      http://172.30.32.1:7080.
   subdomain_host:
     name: Subdomain host
     description: >-

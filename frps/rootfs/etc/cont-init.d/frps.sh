@@ -53,6 +53,22 @@ fi
 printf '%s' "${auth_token}" > "${TOKEN_FILE}"
 chmod 600 "${TOKEN_FILE}"
 
+# internal_only: bind tunnel listeners to the host's address on HA's internal
+# Docker network (interface "hassio"), where reverse proxy apps reach it but
+# LAN devices don't. Clients still connect on bind_port as before.
+proxy_bind_addr="0.0.0.0"
+if bashio::config.true 'internal_only'; then
+    proxy_bind_addr="${INTERNAL_ADDR:-}"
+    if [[ -z "${proxy_bind_addr}" ]]; then
+        proxy_bind_addr="$({ ip -4 addr show hassio 2>/dev/null || true; } | sed -n 's/.*inet \([0-9.]*\)\/.*/\1/p')"
+        proxy_bind_addr="${proxy_bind_addr%%$'\n'*}"
+    fi
+    if [[ -z "${proxy_bind_addr}" ]]; then
+        bashio::exit.nok "internal_only: can't find the internal network address (interface hassio)."
+    fi
+    bashio::log.info "Tunnels only on the internal network: point your reverse proxy at http://${proxy_bind_addr}:$(bashio::config 'vhost_http_port')"
+fi
+
 # Certificate frps presents to frpc, so clients can verify the server.
 tls_cert=""
 tls_key=""
@@ -140,6 +156,7 @@ fi
         echo "auth.tokenSource.file.path = $(toml_string "${TOKEN_FILE}")"
     fi
     echo
+    echo "proxyBindAddr = $(toml_string "${proxy_bind_addr}")"
     echo "vhostHTTPPort = $(bashio::config 'vhost_http_port')"
     if bashio::config.has_value 'subdomain_host'; then
         echo "subDomainHost = $(toml_string "$(bashio::config 'subdomain_host')")"

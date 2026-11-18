@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.72.0.5
+
+- New `internal_only` option: frps serves tunnels only on Home Assistant's
+  internal network (the `hassio` interface), so LAN devices can't reach
+  them over plain HTTP. Point the reverse proxy at the address in the log.
+
 ## 0.72.0.4
 
 - New `certfile`/`keyfile` options: frps presents a real certificate from
