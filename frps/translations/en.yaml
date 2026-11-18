@@ -35,13 +35,17 @@ configuration:
     description: Maximum number of TCP/UDP ports per client. 0 means no limit.
   dashboard_port:
     name: Dashboard port
-    description: Port for the frps web dashboard (LAN only, do not forward).
+    description: >-
+      Port for the frps web dashboard (LAN only, do not forward). 7599 is
+      reserved for the sidebar panel.
   dashboard_user:
     name: Dashboard user
     description: Username for the dashboard.
   dashboard_password:
     name: Dashboard password
-    description: The dashboard is only enabled when a password is set.
+    description: >-
+      Set a password to also open the dashboard on the LAN. The sidebar panel
+      works without it.
   metrics_port:
     name: Prometheus metrics port
     description: >-

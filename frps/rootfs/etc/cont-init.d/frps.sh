@@ -1,0 +1,148 @@
+#!/usr/bin/with-contenv bashio
+# shellcheck shell=bash
+# ==============================================================================
+# Render frps.toml and the ingress nginx.conf from the app options
+# ==============================================================================
+
+readonly FRPS_CONFIG=/tmp/frps.toml
+readonly TOKEN_FILE=/tmp/frps.token
+readonly NGINX_CONFIG=/tmp/nginx.conf
+# Must match ingress_port in config.yaml.
+readonly INGRESS_PORT=7599
+# Only the Supervisor's ingress proxy may talk to the ingress port.
+readonly INGRESS_CLIENT="${INGRESS_CLIENT:-172.30.32.2}"
+
+# Quote a value as a TOML basic string.
+toml_string() {
+    local value="${1//\\/\\\\}"
+    value="${value//\"/\\\"}"
+    printf '"%s"' "${value}"
+}
+
+# Turn "6000-6100, 6200" into TOML allowPorts entries.
+allow_ports_toml() {
+    local spec="${1// /}"
+    local entries=()
+    local part
+    IFS=',' read -ra parts <<< "${spec}"
+    for part in "${parts[@]}"; do
+        if [[ "${part}" == *-* ]]; then
+            entries+=("{ start = ${part%-*}, end = ${part#*-} }")
+        else
+            entries+=("{ single = ${part} }")
+        fi
+    done
+    local IFS=','
+    printf '[%s]' "${entries[*]}"
+}
+
+auth_token="$(bashio::config 'auth_token')"
+if [[ ${#auth_token} -lt 16 ]]; then
+    bashio::exit.nok "auth_token must be at least 16 characters long."
+fi
+# The token lives in its own file, so it never needs escaping in TOML.
+printf '%s' "${auth_token}" > "${TOKEN_FILE}"
+chmod 600 "${TOKEN_FILE}"
+
+dashboard_port="$(bashio::config 'dashboard_port')"
+if [[ "${dashboard_port}" -eq "${INGRESS_PORT}" ]]; then
+    bashio::exit.nok "dashboard_port ${INGRESS_PORT} is reserved for the sidebar panel."
+fi
+
+# The dashboard always runs, because the sidebar panel shows it. Without a
+# dashboard password it only listens on localhost, with random credentials
+# that only the ingress proxy knows.
+if bashio::config.has_value 'dashboard_password'; then
+    dashboard_addr="0.0.0.0"
+    dashboard_user="$(bashio::config 'dashboard_user')"
+    dashboard_password="$(bashio::config 'dashboard_password')"
+    bashio::log.info "Dashboard available on the LAN at port ${dashboard_port}."
+else
+    dashboard_addr="127.0.0.1"
+    dashboard_user="ha-ingress"
+    # Fixed-size input: no SIGPIPE, which would abort under bashio's pipefail.
+    dashboard_password="$(head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9')"
+    bashio::log.info "Dashboard only in the sidebar (set dashboard_password to open it on the LAN)."
+fi
+
+{
+    echo 'bindAddr = "0.0.0.0"'
+    echo "bindPort = $(bashio::config 'bind_port')"
+    echo "transport.tls.force = $(bashio::config 'force_tls')"
+    echo 'detailedErrorsToClient = false'
+    echo
+    echo 'auth.method = "token"'
+    echo 'auth.tokenSource.type = "file"'
+    echo "auth.tokenSource.file.path = $(toml_string "${TOKEN_FILE}")"
+    echo
+    echo "vhostHTTPPort = $(bashio::config 'vhost_http_port')"
+    if bashio::config.has_value 'subdomain_host'; then
+        echo "subDomainHost = $(toml_string "$(bashio::config 'subdomain_host')")"
+    fi
+    if bashio::config.has_value 'allow_ports'; then
+        echo "allowPorts = $(allow_ports_toml "$(bashio::config 'allow_ports')")"
+    fi
+    echo "maxPortsPerClient = $(bashio::config 'max_ports_per_client')"
+    echo
+    echo "webServer.addr = $(toml_string "${dashboard_addr}")"
+    echo "webServer.port = ${dashboard_port}"
+    echo "webServer.user = $(toml_string "${dashboard_user}")"
+    echo "webServer.password = $(toml_string "${dashboard_password}")"
+    if [[ "$(bashio::config 'metrics_port')" -gt 0 ]]; then
+        echo 'metricsServer.addr = "0.0.0.0"'
+        echo "metricsServer.port = $(bashio::config 'metrics_port')"
+    fi
+    echo
+    echo 'log.to = "console"'
+    echo "log.level = $(toml_string "$(bashio::config 'log_level')")"
+    echo 'log.disablePrintColor = true'
+} > "${FRPS_CONFIG}"
+chmod 600 "${FRPS_CONFIG}"
+
+if ! bashio::config.has_value 'allow_ports'; then
+    bashio::log.warning "allow_ports is empty: clients may open any port on this host."
+fi
+
+frps verify -c "${FRPS_CONFIG}" > /dev/null \
+    || bashio::exit.nok "Generated frps configuration is invalid."
+
+# Ingress proxy for the sidebar panel. It adds the dashboard credentials, so
+# the panel never shows a login prompt, and fixes frps' absolute redirect
+# from / to /static/, which would otherwise escape the ingress path.
+basic_auth="$(printf '%s:%s' "${dashboard_user}" "${dashboard_password}" | base64 | tr -d '\n')"
+cat > "${NGINX_CONFIG}" <<EOF
+daemon off;
+worker_processes 1;
+pid /tmp/nginx.pid;
+error_log stderr warn;
+
+events {
+    worker_connections 64;
+}
+
+http {
+    access_log off;
+    server_tokens off;
+    client_body_temp_path /tmp/nginx-client-body;
+    proxy_temp_path /tmp/nginx-proxy;
+
+    server {
+        listen ${INGRESS_PORT};
+        allow ${INGRESS_CLIENT};
+        deny all;
+        absolute_redirect off;
+
+        location = / {
+            return 302 static/;
+        }
+
+        location / {
+            proxy_pass http://127.0.0.1:${dashboard_port};
+            proxy_http_version 1.1;
+            proxy_set_header Authorization "Basic ${basic_auth}";
+            proxy_hide_header WWW-Authenticate;
+        }
+    }
+}
+EOF
+chmod 600 "${NGINX_CONFIG}"

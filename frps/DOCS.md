@@ -35,17 +35,75 @@ internet ──► router :7000 ──► frps bind :7000 ──┘
 | `subdomain_host` | empty | Base domain for tunnels. With `example.com`, a client asking for subdomain `myapp` is served at `myapp.example.com`. |
 | `allow_ports` | empty | Ports clients may open for TCP/UDP tunnels, e.g. `6000-6100, 6200`. Empty means any port. |
 | `max_ports_per_client` | `0` | Limit on TCP/UDP ports per client. `0` means no limit. |
-| `dashboard_port` | `7500` | Port for the frps web dashboard. |
-| `dashboard_user` | `admin` | Dashboard username. |
-| `dashboard_password` | empty | The dashboard only runs when a password is set. |
+| `dashboard_port` | `7500` | Port for the frps web dashboard. `7599` is reserved for the sidebar panel. |
+| `dashboard_user` | `admin` | Dashboard username for LAN access. |
+| `dashboard_password` | empty | Set it to also open the dashboard on the LAN. The sidebar panel works without it. |
 | `metrics_port` | `0` | Prometheus `/metrics` and `/healthz` listener. `0` turns it off. |
 | `log_level` | `info` | `trace`, `debug`, `info`, `warn` or `error`. |
+
+frpc connects to frps over TCP, so forwarding TCP `bind_port` is enough for
+HTTP tunnels. UDP is only needed for `type = "udp"` tunnels (forward their
+remote ports) or a QUIC/KCP client transport, which this app doesn't enable.
 
 The app uses the host network, so every port above is opened directly on the
 Home Assistant host. Make sure none of them collide with other apps.
 
 Only `bind_port` (and any TCP/UDP tunnel ports you allow) should be forwarded
 in your router. Keep the dashboard, metrics and vhost ports LAN-only.
+
+## Putting HTTPS in front with the NGINX Home Assistant SSL proxy app
+
+The NGINX app includes extra server files from `/share/nginx_proxy/`. Turn
+that on in its configuration:
+
+```yaml
+customize:
+  active: true
+  default: nginx_proxy_default*.conf
+  servers: nginx_proxy/*.conf
+```
+
+Then create `/share/nginx_proxy/frps.conf`, using the certificate files from
+the NGINX app's own `certfile`/`keyfile` options (it must cover the tunnel
+names, e.g. a `*.example.com` wildcard):
+
+```nginx
+map $http_upgrade $frps_connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+server {
+    listen 443 ssl;
+    server_name *.example.com;
+
+    ssl_certificate     /ssl/fullchain.pem;
+    ssl_certificate_key /ssl/privkey.pem;
+
+    client_max_body_size 64m;
+
+    location / {
+        proxy_pass http://<home-assistant-ip>:7080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $frps_connection_upgrade;
+        proxy_buffering off;
+        proxy_read_timeout 3600s;
+    }
+}
+```
+
+Restart the NGINX app and check its log: a broken file stops NGINX, and with
+it remote access to Home Assistant.
+
+Nginx prefers exact names over `*.example.com`, so subdomains that already
+have their own server block keep working. Subdomains matched by a regex or by
+the default server would be taken over by the wildcard, so check with
+`grep -rn server_name /share/nginx_proxy/` first.
 
 ## Putting HTTPS in front with Nginx Proxy Manager
 
@@ -101,8 +159,14 @@ mitmweb --mode reverse:http://localhost:3000 -p 8081
 
 ## Dashboard and metrics
 
-With `dashboard_password` set, open `http://<home-assistant-ip>:7500` for live
-clients, proxies and per-proxy traffic (7 days of history).
+The frps dashboard shows live clients, proxies and per-proxy traffic (7 days
+of history). It's in the Home Assistant sidebar as **FRP**, behind your normal
+Home Assistant login. If you don't want the panel, turn off **Show in
+sidebar** on the app's page.
+
+Without `dashboard_password`, the dashboard listens on localhost only, with
+random credentials that only the sidebar panel uses. With a password set, it
+is also reachable at `http://<home-assistant-ip>:7500`.
 
 With `metrics_port` set, Prometheus can scrape
 `http://<home-assistant-ip>:<metrics_port>/metrics`.

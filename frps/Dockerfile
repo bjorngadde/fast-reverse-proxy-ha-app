@@ -2,6 +2,9 @@
 ARG BUILD_FROM=ghcr.io/home-assistant/base:3.24
 FROM ${BUILD_FROM}
 
+# nginx is the ingress proxy for the sidebar panel.
+RUN apk add --no-cache nginx
+
 ARG FRP_VERSION=0.72.0
 ARG TARGETARCH
 RUN \
